@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env
+
+# Data / indexes / runs
+data/processed/
+data/runs/
+data/mlflow*
+logs/
+mlruns/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,10 @@
+# Optional LLM fallback providers and evaluation extras.
+# The core app talks to Groq/Mistral/Ollama over plain HTTP (httpx),
+# so these SDKs are only needed if you extend the client code.
+groq==1.2.0
+mistralai>=1.0.0
+
+# Evaluation
+ragas==0.4.3
+rouge-score==0.1.2
+matplotlib==3.10.8

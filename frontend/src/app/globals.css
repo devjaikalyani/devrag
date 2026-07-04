@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-bg: #0A0A0B;
+  --color-bg-subtle: #111113;
+  --color-bg-elevated: #17171A;
+  --color-bg-overlay: #1E1E22;
+  --color-border: rgba(255,255,255,0.06);
+  --color-border-strong: rgba(255,255,255,0.12);
+  --color-accent: #7C5CFF;
+  --color-accent-dim: rgba(124,92,255,0.12);
+  --color-accent-hover: #8F72FF;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-muted: rgba(255,255,255,0.45);
+  --color-subtle: rgba(255,255,255,0.22);
+
+  /* Fonts */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
+
+  /* Sizes */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Spacing */
+  --spacing-sidebar: 260px;
+  --spacing-right-panel: 380px;
+}
+
+@layer base {
+  *, *::before, *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: #FAFAFA;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.14);
+  }
+
+  ::selection {
+    background-color: rgba(124,92,255,0.3);
+  }
+
+  /* Code font in monospace contexts */
+  code, kbd, samp, pre {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Shiki code blocks */
+.shiki {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.shiki code {
+  background: none !important;
+  padding: 0;
+  font-family: var(--font-mono);
+}
+
+/* Streaming cursor */
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--color-accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink-cursor 1s step-end infinite;
+}
+
+/* Streaming underline on last line */
+@keyframes stream-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.stream-underline {
+  position: relative;
+  overflow: hidden;
+}
+.stream-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  animation: stream-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Grid background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Citation highlight pulse */
+@keyframes cite-highlight {
+  0% { background-color: rgba(124,92,255,0.22); }
+  100% { background-color: transparent; }
+}
+.cite-highlighted {
+  animation: cite-highlight 1.2s ease-out forwards;
+  border-radius: var(--radius-sm);
+}

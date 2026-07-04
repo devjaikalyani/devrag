@@ -1,0 +1,24 @@
+[project]
+name = "devrag"
+version = "1.0.0"
+description = "Chat with any codebase, then let the agent fix it. Hybrid retrieval plus an autonomous LangGraph agent, powered by Claude."
+requires-python = ">=3.11"
+readme = "README.md"
+
+[project.scripts]
+devrag = "cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["devrag*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
