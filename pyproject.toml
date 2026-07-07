@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "Chat with any codebase, then let the agent fix it. Hybrid retrieval plus an autonomous LangGraph agent, powered by Claude."
 requires-python = ">=3.11"
 readme = "README.md"
+license = {file = "LICENSE"}
 
 [project.scripts]
 devrag = "cli:app"

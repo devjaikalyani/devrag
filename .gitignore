@@ -12,6 +12,7 @@ __pycache__/
 # Data / indexes / runs
 data/processed/
 data/runs/
+data/billing/
 data/mlflow*
 logs/
 mlruns/

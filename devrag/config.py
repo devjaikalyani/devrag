@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # Agent
     # ------------------------------------------------------------------
     github_token: str = Field("", env="GITHUB_TOKEN")
+    # Safety interlock: PR-mode runs against repos the token user does not own
+    # are refused unless this is explicitly enabled. Unsolicited automated PRs
+    # to third-party repositories violate GitHub's Acceptable Use Policies.
+    allow_third_party_repos: bool = Field(False, env="ALLOW_THIRD_PARTY_REPOS")
     max_retries: int = Field(5, env="MAX_RETRIES")
     sandbox_timeout: int = Field(120, env="SANDBOX_TIMEOUT")
     clone_dir: Path = Field(Path("/tmp/devrag_repos"), env="CLONE_DIR")
@@ -70,6 +74,13 @@ class Settings(BaseSettings):
     enable_hierarchical_planning: bool = Field(True, env="ENABLE_HIERARCHICAL_PLANNING")
     enable_complexity_routing: bool = Field(True, env="ENABLE_COMPLEXITY_ROUTING")
     max_subtasks: int = Field(10, env="MAX_SUBTASKS")
+
+    # ------------------------------------------------------------------
+    # Billing (Razorpay — domestic INR and international USD)
+    # ------------------------------------------------------------------
+    razorpay_key_id: str = Field("", env="RAZORPAY_KEY_ID")
+    razorpay_key_secret: str = Field("", env="RAZORPAY_KEY_SECRET")
+    razorpay_webhook_secret: str = Field("", env="RAZORPAY_WEBHOOK_SECRET")
 
     # ------------------------------------------------------------------
     # API / tracking
@@ -157,6 +168,7 @@ OLLAMA_MODEL = settings.ollama_model
 
 MAX_TOKENS = settings.max_tokens
 GITHUB_TOKEN = settings.github_token or os.environ.get("GITHUB_TOKEN", "")
+ALLOW_THIRD_PARTY_REPOS = settings.allow_third_party_repos
 
 MAX_RETRIES = settings.max_retries
 SANDBOX_TIMEOUT = settings.sandbox_timeout

@@ -12,6 +12,17 @@ def _gh() -> Github:
     return Github(tok)
 
 
+_cached_login: str | None = None
+
+
+def get_authenticated_login() -> str:
+    """Login of the GITHUB_TOKEN's user (cached for the process)."""
+    global _cached_login
+    if _cached_login is None:
+        _cached_login = _gh().get_user().login
+    return _cached_login
+
+
 def parse_issue_url(url: str) -> tuple:
     pattern = r"github[.]com/([^/]+)/([^/]+)/issues/(\d+)"
     m = re.search(pattern, url)

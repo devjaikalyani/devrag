@@ -11,6 +11,14 @@ Two surfaces, one index:
     GET  /runs                   run history
     GET  /runs/{run_id}          single run detail
     GET  /usage                  LLM token/cost totals for this process
+  - Billing routes (Razorpay, domestic INR + international USD):
+    GET  /billing/plans          pricing catalog
+    GET  /billing/status         current tier, expiry, remaining free quota
+    POST /billing/order          create a Razorpay order for checkout
+    POST /billing/verify         verify checkout signature, activate Pro
+    POST /billing/webhook        Razorpay server-to-server confirmation
+
+Free-tier limits return HTTP 402 with an upgrade hint.
 """
 
 import json
@@ -26,6 +34,9 @@ from devrag.config import get_available_providers, settings
 from devrag.rag.service import get_pipeline
 from devrag.llm.client import usage as llm_usage
 from devrag.agent import runner
+from devrag.billing import entitlements, plans as billing_plans, razorpay_client
+from devrag.billing.entitlements import EntitlementError
+from devrag.billing.razorpay_client import RazorpayNotConfigured
 
 app = FastAPI(title="DevRAG API", version="1.0.0")
 
@@ -40,8 +51,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API key auth — set API_KEY in .env to enable; leave blank for local dev
-_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+# API key auth — set API_KEY in .env to enable; leave blank for local dev.
+# The Razorpay webhook is called by Razorpay's servers and authenticates
+# itself with its own HMAC signature, so it must bypass the API key.
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/billing/webhook"}
 
 
 @app.middleware("http")
@@ -87,6 +100,17 @@ class SolveRequest(BaseModel):
     dry_run: bool = False             # plan only, no code changes
     no_pr: bool = False               # fix and test but do not open a PR
 
+class CreateOrderRequest(BaseModel):
+    package: str                      # pro_monthly | pro_yearly
+    currency: str = "INR"             # INR (domestic) | USD (international)
+
+class VerifyPaymentRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    package: str
+    currency: str = "INR"
+
 
 # ── Chat / RAG routes (CodeRAG surface) ───────────────────────────────────
 
@@ -129,8 +153,20 @@ def delete_repo(key: str):
     return {"status": "ok", "message": f"Deleted repo '{key}'"}
 
 
+def _enforce_repo_limit(new_key: str):
+    p = get_pipeline()
+    sources = p.get_ingested_sources()
+    is_new = new_key not in {s.get("key") for s in sources}
+    try:
+        entitlements.check_repo_allowed(len(sources), is_new)
+    except EntitlementError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+
+
 @app.post("/ingest/github")
 def ingest_github(req: IngestGitHubRequest):
+    from devrag.rag.pipeline import _safe_key
+    _enforce_repo_limit(_safe_key(f"{req.url}@{req.branch}"))
     try:
         return get_pipeline().ingest_github(req.url, branch=req.branch)
     except Exception as e:
@@ -141,6 +177,8 @@ def ingest_github(req: IngestGitHubRequest):
 def ingest_directory(req: IngestDirectoryRequest):
     if not Path(req.path).exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {req.path}")
+    from devrag.rag.pipeline import _safe_key
+    _enforce_repo_limit(_safe_key(f"local::{req.path}"))
     return get_pipeline().ingest_directory(req.path)
 
 
@@ -161,6 +199,10 @@ def query(req: QueryRequest):
     p = get_pipeline()
     if p.retriever is None:
         raise HTTPException(status_code=400, detail="No repo selected. Ingest or switch to a repo first.")
+    try:
+        entitlements.check_query_allowed()
+    except EntitlementError as e:
+        raise HTTPException(status_code=402, detail=str(e))
     response = p.query(req.question, check_faithfulness=req.check_faithfulness)
     return QueryResponse(
         question=response.query,
@@ -184,6 +226,10 @@ def query_stream(question: str):
     p = get_pipeline()
     if p.retriever is None:
         raise HTTPException(status_code=400, detail="No repo selected.")
+    try:
+        entitlements.check_query_allowed()
+    except EntitlementError as e:
+        raise HTTPException(status_code=402, detail=str(e))
 
     def token_generator():
         try:
@@ -215,6 +261,12 @@ def clear_all():
 def solve(req: SolveRequest):
     """Start an autonomous agent run. Returns run_id immediately;
     follow progress on /solve/{run_id}/events."""
+    issue_mode_with_pr = bool(req.issue_url) and not (req.dry_run or req.no_pr)
+    try:
+        entitlements.check_agent_run_allowed(issue_mode_with_pr=issue_mode_with_pr)
+    except EntitlementError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+
     if req.issue_url:
         run = runner.start_issue_run(req.issue_url, dry_run=req.dry_run, no_pr=req.no_pr)
     elif req.repo_path and req.task:
@@ -263,3 +315,76 @@ def run_detail(run_id: str):
 @app.get("/usage")
 def usage_stats():
     return llm_usage.stats()
+
+
+# ── Billing routes (Razorpay) ─────────────────────────────────────────────
+
+@app.get("/billing/plans")
+def billing_plans_catalog():
+    return billing_plans.get_plans()
+
+
+@app.get("/billing/status")
+def billing_status():
+    return entitlements.status()
+
+
+@app.post("/billing/order")
+def billing_create_order(req: CreateOrderRequest):
+    """Create a Razorpay order. INR for domestic, USD for international."""
+    try:
+        return razorpay_client.create_order(req.package, req.currency.upper())
+    except RazorpayNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Razorpay order creation failed: {e}")
+
+
+@app.post("/billing/verify")
+def billing_verify(req: VerifyPaymentRequest):
+    """Verify the checkout signature and activate Pro."""
+    if req.package not in billing_plans.PACKAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown package: {req.package}")
+    try:
+        valid = razorpay_client.verify_payment_signature(
+            req.razorpay_order_id, req.razorpay_payment_id, req.razorpay_signature
+        )
+    except RazorpayNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    if not valid:
+        raise HTTPException(status_code=400, detail="Payment signature verification failed.")
+
+    record = entitlements.activate_pro(
+        req.package, req.razorpay_payment_id, req.razorpay_order_id, req.currency.upper()
+    )
+    return {"status": "ok", "tier": record["tier"], "expires_at": record["expires_at"]}
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    """Razorpay server-to-server confirmation (source of truth when hosted).
+
+    Configure the webhook in the Razorpay dashboard for the event
+    payment.captured, pointing at https://<your-host>/billing/webhook.
+    """
+    raw = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature", "")
+    try:
+        if not razorpay_client.verify_webhook_signature(raw, signature):
+            raise HTTPException(status_code=400, detail="Invalid webhook signature.")
+    except RazorpayNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    payload = json.loads(raw)
+    event = payload.get("event", "")
+    if event == "payment.captured":
+        entity = payload["payload"]["payment"]["entity"]
+        order_id = entity.get("order_id", "")
+        payment_id = entity.get("id", "")
+        currency = entity.get("currency", "INR")
+        package = (entity.get("notes") or {}).get("package") or \
+            razorpay_client.fetch_order_package(order_id) or "pro_monthly"
+        entitlements.activate_pro(package, payment_id, order_id, currency)
+    return {"status": "ok", "event": event}

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect } from "react";
-import { Terminal, GitBranch, ChevronDown, BarChart2, Settings } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Terminal, GitBranch, ChevronDown, BarChart2, Settings, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useAppStore, useActiveRepo } from "@/lib/store";
+import { getBillingStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MLFLOW_URL = process.env.NEXT_PUBLIC_MLFLOW_URL ?? "http://localhost:5000";
@@ -22,8 +23,10 @@ async function openMLflow() {
 export function Topbar() {
   const { setCommandPaletteOpen, setIngestModalOpen } = useAppStore();
   const activeRepo = useActiveRepo();
+  const [tier, setTier] = useState<"free" | "pro" | null>(null);
 
   useEffect(() => {
+    getBillingStatus().then((s) => setTier(s.tier)).catch(() => {});
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
@@ -59,7 +62,28 @@ export function Topbar() {
         >
           Agent
         </a>
+        <a
+          href="/pricing"
+          className="px-2 py-0.5 rounded text-xs font-mono text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          Pricing
+        </a>
       </nav>
+
+      {tier && (
+        <a
+          href="/pricing"
+          className={cn(
+            "flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors",
+            tier === "pro"
+              ? "border-accent/40 bg-accent-dim text-accent"
+              : "border-white/10 text-white/40 hover:text-white/70 hover:border-white/20"
+          )}
+        >
+          {tier === "pro" && <Sparkles size={9} />}
+          {tier === "pro" ? "PRO" : "FREE"}
+        </a>
+      )}
 
       <div className="h-4 w-px bg-white/10 shrink-0" />
 

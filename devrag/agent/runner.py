@@ -225,6 +225,29 @@ def _execute(run: Run, state: dict, dry_run: bool):
         run.finish("failed", error=str(e))
 
 
+def _check_repo_permission(owner: str, pr_mode: bool) -> None:
+    """Refuse PR-mode runs against repos the token user does not own unless
+    ALLOW_THIRD_PARTY_REPOS is set. Unsolicited automated pull requests to
+    third-party repositories violate GitHub's Acceptable Use Policies."""
+    from devrag import config
+
+    if not pr_mode or config.ALLOW_THIRD_PARTY_REPOS:
+        return
+    try:
+        from devrag.tools.github_client import get_authenticated_login
+
+        login = get_authenticated_login()
+    except Exception:
+        return  # cannot determine identity; clone/PR steps will surface auth errors
+    if owner.lower() != login.lower():
+        raise PermissionError(
+            f"PR mode against a repository you do not own ({owner} != {login}). "
+            f"Only open automated pull requests on repos you own or have contributor "
+            f"consent for. Use dry_run/no_pr, or set ALLOW_THIRD_PARTY_REPOS=true in .env "
+            f"if you have permission to contribute."
+        )
+
+
 def start_issue_run(issue_url: str, dry_run: bool = False, no_pr: bool = False) -> Run:
     """Fix a GitHub issue end to end."""
     from devrag.tools.github_client import clone_repo, fetch_issue, parse_issue_url
@@ -236,6 +259,7 @@ def start_issue_run(issue_url: str, dry_run: bool = False, no_pr: bool = False) 
         try:
             run.emit("status", detail="Fetching issue")
             owner, repo_name, issue_num = parse_issue_url(issue_url)
+            _check_repo_permission(owner, pr_mode=not (dry_run or no_pr))
             issue = fetch_issue(owner, repo_name, issue_num)
             run.emit("status", detail=f"{owner}/{repo_name}#{issue_num}: {issue['title']}")
 

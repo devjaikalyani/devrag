@@ -187,6 +187,66 @@ export async function getRun(runId: string) {
   return fetchJSON<RunSummary & { events: RunEvent[] }>(`/runs/${encodeURIComponent(runId)}`);
 }
 
+// ── Billing ───────────────────────────────────────────────────────────────
+
+export interface BillingPlans {
+  tiers: Record<string, { name: string; features: string[] }>;
+  packages: Record<string, {
+    name: string;
+    days: number;
+    prices: Record<string, number>;   // smallest unit: paise / cents
+    display: Record<string, string>;
+  }>;
+  currencies: string[];
+  limits: Record<string, number>;
+}
+
+export interface BillingStatus {
+  tier: "free" | "pro";
+  expires_at?: string | null;
+  package?: string | null;
+  usage: { queries_today: number; runs_this_month: number };
+  remaining?: { queries_today: number; runs_this_month: number };
+}
+
+export interface OrderResponse {
+  order_id: string;
+  amount: number;
+  currency: string;
+  package: string;
+  key_id: string;
+  name: string;
+  description: string;
+}
+
+export async function getBillingPlans() {
+  return fetchJSON<BillingPlans>("/billing/plans");
+}
+
+export async function getBillingStatus() {
+  return fetchJSON<BillingStatus>("/billing/status", undefined, true);
+}
+
+export async function createOrder(pkg: string, currency: string) {
+  return fetchJSON<OrderResponse>(
+    "/billing/order",
+    { method: "POST", body: JSON.stringify({ package: pkg, currency }) }
+  );
+}
+
+export async function verifyPayment(params: {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  package: string;
+  currency: string;
+}) {
+  return fetchJSON<{ status: string; tier: string; expires_at: string }>(
+    "/billing/verify",
+    { method: "POST", body: JSON.stringify(params) }
+  );
+}
+
 export function streamRunEvents(
   runId: string,
   onEvent: (event: RunEvent) => void,
