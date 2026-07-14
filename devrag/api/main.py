@@ -60,7 +60,10 @@ _PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/billing/webhoo
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     if settings.api_key and request.url.path not in _PUBLIC_PATHS:
-        if request.headers.get("X-API-Key") != settings.api_key:
+        # SSE endpoints are consumed via EventSource, which cannot set
+        # custom headers — accept the key as a query parameter there too.
+        supplied = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+        if supplied != settings.api_key:
             return JSONResponse({"detail": "Invalid or missing API key"}, status_code=401)
     return await call_next(request)
 
@@ -116,12 +119,18 @@ class VerifyPaymentRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    p = get_pipeline()
+    # Never trigger model loading here: orchestrator liveness probes have
+    # short timeouts, and the first pipeline init downloads/loads CodeBERT
+    # plus two cross-encoders. Report readiness without forcing it.
+    from devrag.rag.service import pipeline_ready
+
+    p = get_pipeline() if pipeline_ready() else None
     return {
         "status": "ok",
         "service": "devrag",
-        "active_key": p.active_key,
-        "total_chunks": p.faiss_index.index.ntotal if p.faiss_index else 0,
+        "models_loaded": p is not None,
+        "active_key": p.active_key if p else None,
+        "total_chunks": p.faiss_index.index.ntotal if p and p.faiss_index else 0,
         "llm_providers": get_available_providers(),
         "model_primary": settings.model_primary,
     }

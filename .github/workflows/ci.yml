@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile check
+        run: python -m compileall -q devrag cli.py scripts
+
+      - name: Unit tests (fast set, no model downloads)
+        env:
+          GITHUB_TOKEN: test_token
+          TOKENIZERS_PARALLELISM: "false"
+        run: >
+          pytest -q
+          tests/test_billing.py
+          tests/test_repo_permission.py
+          tests/test_graph_routing.py
+          tests/test_agent_nodes.py
+          tests/test_planner.py
+          tests/test_state.py
+          tests/test_filesystem.py
+          tests/test_tools.py
+          tests/test_bash_executor.py
+          tests/test_github_client.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npx next build

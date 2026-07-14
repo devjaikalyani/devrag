@@ -104,7 +104,9 @@ export async function streamQuery(
   onDone: () => void,
   onError: (err: string) => void
 ): Promise<() => void> {
-  const url = `${BASE}/query/stream?question=${encodeURIComponent(question)}`;
+  // EventSource cannot send headers, so the API key rides as a query param
+  const auth = API_KEY ? `&api_key=${encodeURIComponent(API_KEY)}` : "";
+  const url = `${BASE}/query/stream?question=${encodeURIComponent(question)}${auth}`;
   const es = new EventSource(url);
 
   es.onmessage = (e) => {
@@ -253,7 +255,8 @@ export function streamRunEvents(
   onDone: () => void,
   onError: (err: string) => void
 ): () => void {
-  const es = new EventSource(`${BASE}/solve/${encodeURIComponent(runId)}/events`);
+  const auth = API_KEY ? `?api_key=${encodeURIComponent(API_KEY)}` : "";
+  const es = new EventSource(`${BASE}/solve/${encodeURIComponent(runId)}/events${auth}`);
 
   es.onmessage = (e) => {
     if (e.data === "[DONE]") {

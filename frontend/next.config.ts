@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // output: "standalone" — only needed for self-hosted Docker deployments.
-  // Do NOT enable when deploying to Vercel.
+  // Standalone output is required by frontend/Dockerfile (it copies
+  // .next/standalone). The Docker build sets DOCKER_BUILD=1; Vercel and
+  // local builds leave it unset and get the normal output.
+  output: process.env.DOCKER_BUILD === "1" ? "standalone" : undefined,
 };
 
 export default nextConfig;

@@ -1,7 +1,10 @@
 services:
   api:
     build: .
-    command: uvicorn devrag.api.main:app --host 0.0.0.0 --port 8001 --workers 2
+    # One worker only: the run registry, SSE event streams, pipeline singleton,
+    # and usage tracker are process-local. Multiple workers would route SSE
+    # requests to workers that never saw the run.
+    command: uvicorn devrag.api.main:app --host 0.0.0.0 --port 8001 --workers 1
     ports:
       - "8001:8001"
     volumes:
