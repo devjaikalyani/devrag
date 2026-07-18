@@ -1,5 +1,5 @@
 """
-config.py — Unified DevRAG configuration.
+config.py: Unified DevRAG configuration.
 
 Two access styles are supported so both halves of the codebase work unchanged:
 
@@ -14,11 +14,12 @@ Two access styles are supported so both halves of the codebase work unchanged:
 from __future__ import annotations
 
 import os
+import time
+import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env from the project root (parent of the devrag package)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -26,76 +27,79 @@ load_dotenv(_PROJECT_ROOT / ".env")
 
 
 class Settings(BaseSettings):
+    # Field names double as env var names (case-insensitive), so
+    # anthropic_api_key reads ANTHROPIC_API_KEY and so on.
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # ------------------------------------------------------------------
-    # LLM — Claude first, other providers as fallback
+    # LLM: Claude first, other providers as fallback
     # ------------------------------------------------------------------
-    anthropic_api_key: str = Field("", env="ANTHROPIC_API_KEY")
-    model_primary: str = Field("claude-sonnet-5", env="MODEL_PRIMARY")
-    model_fast: str = Field("claude-haiku-4-5", env="MODEL_FAST")
+    anthropic_api_key: str = ""
+    model_primary: str = "claude-sonnet-5"
+    model_fast: str = "claude-haiku-4-5"
     # Optional override for the hardest (architect-level) tasks, e.g. claude-opus-4-8
-    model_architect: str = Field("", env="MODEL_ARCHITECT")
+    model_architect: str = ""
     # auto | anthropic | groq | mistral | ollama
-    llm_provider: str = Field("auto", env="LLM_PROVIDER")
+    llm_provider: str = "auto"
 
     # Fallback providers (optional)
-    groq_api_key: str = Field("", env="GROQ_API_KEY")
-    groq_model: str = Field("llama-3.3-70b-versatile", env="GROQ_MODEL")
-    mistral_api_key: str = Field("", env="MISTRAL_API_KEY")
-    mistral_model: str = Field("mistral-small-latest", env="MISTRAL_MODEL")
-    ollama_host: str = Field("http://localhost:11434", env="OLLAMA_HOST")
-    ollama_model: str = Field("qwen2.5-coder:7b", env="OLLAMA_MODEL")
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    mistral_api_key: str = ""
+    mistral_model: str = "mistral-small-latest"
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5-coder:7b"
 
-    max_tokens: int = Field(8192, env="MAX_TOKENS")
+    max_tokens: int = 8192
 
     # ------------------------------------------------------------------
-    # RAG — retrieval engine
+    # RAG: retrieval engine
     # ------------------------------------------------------------------
-    embedding_model: str = Field("microsoft/codebert-base", env="EMBEDDING_MODEL")
-    reranker_model: str = Field("cross-encoder/ms-marco-MiniLM-L-6-v2", env="RERANKER_MODEL")
-    faiss_index_path: Path = Field(Path("data/processed/faiss_index"), env="FAISS_INDEX_PATH")
-    chunk_size: int = Field(512, env="CHUNK_SIZE")
-    chunk_overlap: int = Field(64, env="CHUNK_OVERLAP")
-    top_k_retrieve: int = Field(20, env="TOP_K_RETRIEVE")
-    top_k_rerank: int = Field(5, env="TOP_K_RERANK")
-    faithfulness_threshold: float = Field(0.5, env="FAITHFULNESS_THRESHOLD")
+    embedding_model: str = "microsoft/codebert-base"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    faiss_index_path: Path = Path("data/processed/faiss_index")
+    chunk_size: int = 512
+    chunk_overlap: int = 64
+    top_k_retrieve: int = 20
+    top_k_rerank: int = 5
+    faithfulness_threshold: float = 0.5
 
     # ------------------------------------------------------------------
     # Agent
     # ------------------------------------------------------------------
-    github_token: str = Field("", env="GITHUB_TOKEN")
+    github_token: str = ""
     # Safety interlock: PR-mode runs against repos the token user does not own
     # are refused unless this is explicitly enabled. Unsolicited automated PRs
     # to third-party repositories violate GitHub's Acceptable Use Policies.
-    allow_third_party_repos: bool = Field(False, env="ALLOW_THIRD_PARTY_REPOS")
-    max_retries: int = Field(5, env="MAX_RETRIES")
-    sandbox_timeout: int = Field(120, env="SANDBOX_TIMEOUT")
-    clone_dir: Path = Field(Path("/tmp/devrag_repos"), env="CLONE_DIR")
-    enable_self_review: bool = Field(True, env="ENABLE_SELF_REVIEW")
-    enable_hierarchical_planning: bool = Field(True, env="ENABLE_HIERARCHICAL_PLANNING")
-    enable_complexity_routing: bool = Field(True, env="ENABLE_COMPLEXITY_ROUTING")
-    max_subtasks: int = Field(10, env="MAX_SUBTASKS")
+    allow_third_party_repos: bool = False
+    max_retries: int = 5
+    sandbox_timeout: int = 120
+    clone_dir: Path = Path("/tmp/devrag_repos")
+    enable_self_review: bool = True
+    enable_hierarchical_planning: bool = True
+    enable_complexity_routing: bool = True
+    max_subtasks: int = 10
 
     # ------------------------------------------------------------------
-    # Billing (Razorpay — domestic INR and international USD)
+    # Billing (Razorpay: domestic INR and international USD)
     # ------------------------------------------------------------------
-    razorpay_key_id: str = Field("", env="RAZORPAY_KEY_ID")
-    razorpay_key_secret: str = Field("", env="RAZORPAY_KEY_SECRET")
-    razorpay_webhook_secret: str = Field("", env="RAZORPAY_WEBHOOK_SECRET")
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
 
     # ------------------------------------------------------------------
     # API / tracking
     # ------------------------------------------------------------------
-    api_host: str = Field("0.0.0.0", env="API_HOST")
-    api_port: int = Field(8001, env="API_PORT")
-    allowed_origins: str = Field("*", env="ALLOWED_ORIGINS")
-    api_key: str = Field("", env="API_KEY")
-    mlflow_tracking_uri: str = Field("http://localhost:5000", env="MLFLOW_TRACKING_URI")
-    mlflow_experiment: str = Field("devrag", env="MLFLOW_EXPERIMENT")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8001
+    allowed_origins: str = "*"
+    api_key: str = ""
+    mlflow_tracking_uri: str = "http://localhost:5000"
+    mlflow_experiment: str = "devrag"
 
 
 settings = Settings()
@@ -105,13 +109,30 @@ settings = Settings()
 # Provider detection
 # ---------------------------------------------------------------------------
 
+_ollama_probe = {"ts": 0.0, "alive": False}
+
+
+def _ollama_reachable() -> bool:
+    """Probe the Ollama daemon, cached for 30s so /health stays cheap."""
+    now = time.time()
+    if now - _ollama_probe["ts"] < 30:
+        return _ollama_probe["alive"]
+    try:
+        with urllib.request.urlopen(settings.ollama_host.rstrip("/") + "/api/tags", timeout=1):
+            alive = True
+    except Exception:
+        alive = False
+    _ollama_probe.update(ts=now, alive=alive)
+    return alive
+
+
 def get_available_providers() -> dict:
-    """Which LLM providers have credentials configured."""
+    """Which LLM providers are usable: keyed providers by config, Ollama by liveness."""
     return {
         "anthropic": bool(settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")),
         "groq": bool(settings.groq_api_key),
         "mistral": bool(settings.mistral_api_key),
-        "ollama": True,  # assumed available if the daemon is running
+        "ollama": _ollama_reachable(),
     }
 
 
@@ -132,7 +153,7 @@ def validate() -> None:
     if not (providers["anthropic"] or providers["groq"] or providers["mistral"]):
         raise EnvironmentError(
             "No LLM API key configured.\n"
-            "Set ANTHROPIC_API_KEY (recommended) in .env — or GROQ_API_KEY / "
+            "Set ANTHROPIC_API_KEY (recommended) in .env, or GROQ_API_KEY / "
             "MISTRAL_API_KEY as a fallback.\n"
             "Copy .env.example to .env and fill in your keys."
         )
@@ -150,7 +171,7 @@ cfg = _CfgShim()
 
 
 # ---------------------------------------------------------------------------
-# Module-level constants — the interface DevAgent-origin code expects
+# Module-level constants: the interface DevAgent-origin code expects
 # ---------------------------------------------------------------------------
 
 ANTHROPIC_API_KEY = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")

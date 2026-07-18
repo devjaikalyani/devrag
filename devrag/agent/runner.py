@@ -207,6 +207,15 @@ def _execute(run: Run, state: dict, dry_run: bool):
                         detail["total_tokens"] = node_output["total_tokens"]
                 run.emit("node", **detail)
 
+        if final_state.get("code_changes"):
+            run.emit("status", detail="Re-indexing repository so chat reflects the changes")
+            try:
+                from devrag.rag.service import get_pipeline
+
+                get_pipeline().reingest_directory(str(state["repo_path"]))
+            except Exception as e:
+                logger.warning(f"Re-index after run failed for {state['repo_path']}: {e}")
+
         usage_after = llm_usage.stats()
         elapsed = round(time.time() - started, 1)
         run.finish(

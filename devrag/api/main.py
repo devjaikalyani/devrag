@@ -122,6 +122,7 @@ def health():
     # Never trigger model loading here: orchestrator liveness probes have
     # short timeouts, and the first pipeline init downloads/loads CodeBERT
     # plus two cross-encoders. Report readiness without forcing it.
+    from devrag.config import get_primary_provider
     from devrag.rag.service import pipeline_ready
 
     p = get_pipeline() if pipeline_ready() else None
@@ -133,6 +134,7 @@ def health():
         "total_chunks": p.faiss_index.index.ntotal if p and p.faiss_index else 0,
         "llm_providers": get_available_providers(),
         "model_primary": settings.model_primary,
+        "effective_provider": get_primary_provider(),
     }
 
 

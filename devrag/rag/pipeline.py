@@ -294,6 +294,17 @@ class CodeRAGPipeline:
         result = self.ingest_directory(str(path))
         return result["key"]
 
+    def reingest_directory(self, path: str) -> dict:
+        """Rebuild a local repo's index from the files currently on disk.
+
+        Chunks are captured at ingest time, so after the agent edits files the
+        chat index is stale until this runs.
+        """
+        key = _safe_key(f"local::{path}")
+        if self.is_already_ingested(key):
+            self.delete_repo(key)
+        return self.ingest_directory(path)
+
     def ingest_text(self, text: str, source_name: str = "inline") -> dict:
         key = _safe_key(f"text::{source_name}")
         if self.is_already_ingested(key):
