@@ -33,17 +33,35 @@ class CodeEmbedder:
     Uses mean pooling over token embeddings.
     """
 
+    # EMBEDDING_MODEL values with this prefix load a model2vec static model:
+    # precomputed token vectors, no transformer forward pass, so ingestion
+    # runs at hundreds of chunks/s on CPU instead of ~1 chunk/s. Retrieval
+    # leans on BM25 + the cross-encoder reranker to absorb the quality gap.
+    STATIC_PREFIX = "static:"
+
     def __init__(self, model_name: str = "microsoft/codebert-base"):
         logger.info(f"Loading embedding model: {model_name}")
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model.to(self.device)
-        self.dim = self.model.get_sentence_embedding_dimension()
-        logger.info(f"Embedding dim={self.dim}, device={self.device}")
+        self.is_static = model_name.startswith(self.STATIC_PREFIX)
+        if self.is_static:
+            from model2vec import StaticModel
+
+            self.model = StaticModel.from_pretrained(model_name[len(self.STATIC_PREFIX):])
+            self.device = "cpu"
+            self.dim = int(self.model.encode(["probe"]).shape[1])
+        else:
+            self.model = SentenceTransformer(model_name)
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.model.to(self.device)
+            self.dim = self.model.get_sentence_embedding_dimension()
+        logger.info(f"Embedding dim={self.dim}, device={self.device}, static={self.is_static}")
 
     def encode(self, texts: List[str], batch_size: int = 32, show_progress: bool = True) -> np.ndarray:
         """Return L2-normalized embeddings, shape (N, dim)."""
+        if self.is_static:
+            embeddings = np.asarray(self.model.encode(texts))
+            norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+            return (embeddings / np.clip(norms, 1e-12, None)).astype(np.float32)
         embeddings = self.model.encode(
             texts,
             batch_size=batch_size,
@@ -67,7 +85,7 @@ class CodeEmbedder:
         extra threads safely, roughly halving CPU ingestion time. Any worker
         failure falls back to in-process encoding.
         """
-        if self.device != "cpu" or len(texts) < self.BULK_WORKER_MIN_TEXTS:
+        if self.is_static or self.device != "cpu" or len(texts) < self.BULK_WORKER_MIN_TEXTS:
             return self.encode(texts, show_progress=True)
 
         import subprocess
