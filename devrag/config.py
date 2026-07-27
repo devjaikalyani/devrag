@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     embedding_model: str = "microsoft/codebert-base"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # Torch threads for the bulk-embedding worker process;
+    # 0 = auto (half the logical cores). See embed_worker.py for why
+    # bulk embedding runs out of process.
+    embed_threads: int = 0
     faiss_index_path: Path = Path("data/processed/faiss_index")
     chunk_size: int = 512
     chunk_overlap: int = 64

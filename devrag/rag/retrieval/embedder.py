@@ -9,6 +9,7 @@ Supports:
 """
 
 import json
+import os
 import pickle
 import re
 from pathlib import Path
@@ -22,6 +23,7 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
+from devrag.config import settings
 from devrag.rag.ingestion.chunker import Chunk
 
 
@@ -33,6 +35,7 @@ class CodeEmbedder:
 
     def __init__(self, model_name: str = "microsoft/codebert-base"):
         logger.info(f"Loading embedding model: {model_name}")
+        self.model_name = model_name
         self.model = SentenceTransformer(model_name)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
@@ -50,6 +53,52 @@ class CodeEmbedder:
             device=self.device,
         )
         return embeddings.astype(np.float32)
+
+    # Bulk ingestion below this size is not worth a worker's model-load cost.
+    BULK_WORKER_MIN_TEXTS = 64
+
+    def encode_bulk(self, texts: List[str]) -> np.ndarray:
+        """Encode a large batch, using a multi-thread subprocess when it pays off.
+
+        This process must keep torch at one thread: torch, faiss, and sklearn
+        each ship an OpenMP runtime, and raising torch's threads while they
+        share a process segfaults on Intel Mac (reproduced at 2+ threads).
+        A subprocess that loads only torch and the embedding model takes the
+        extra threads safely, roughly halving CPU ingestion time. Any worker
+        failure falls back to in-process encoding.
+        """
+        if self.device != "cpu" or len(texts) < self.BULK_WORKER_MIN_TEXTS:
+            return self.encode(texts, show_progress=True)
+
+        import subprocess
+        import sys
+        import tempfile
+
+        threads = settings.embed_threads or max(1, (os.cpu_count() or 2) // 2)
+        if threads <= 1:
+            return self.encode(texts, show_progress=True)
+
+        worker = Path(__file__).with_name("embed_worker.py")
+        tmpdir = Path(tempfile.mkdtemp(prefix="devrag_embed_"))
+        texts_path = tmpdir / "texts.json"
+        out_path = tmpdir / "embeddings.npy"
+        try:
+            texts_path.write_text(json.dumps(texts))
+            logger.info(f"Bulk-embedding {len(texts)} texts in a {threads}-thread worker")
+            result = subprocess.run(
+                [sys.executable, str(worker), str(texts_path), str(out_path),
+                 self.model_name, str(threads)],
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"embed worker exited {result.returncode}")
+            return np.load(out_path).astype(np.float32)
+        except Exception as e:
+            logger.warning(f"Embed worker failed ({e}); falling back to in-process encoding")
+            return self.encode(texts, show_progress=True)
+        finally:
+            import shutil
+
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class FAISSIndex:

@@ -19,9 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict
 
-import numpy as np
 from loguru import logger
-from tqdm import tqdm
 
 from devrag.config import settings
 from devrag.rag.generation.faithfulness import FaithfulnessChecker, FaithfulnessResult
@@ -201,12 +199,7 @@ class CodeRAGPipeline:
         """Build a fresh isolated index for a repo and make it active."""
         logger.info(f"Embedding {len(chunks)} chunks for '{key}'…")
         texts = [c.text for c in chunks]
-        all_embeddings = []
-        for i in tqdm(range(0, len(texts), 32), desc="Embedding"):
-            batch = texts[i:i + 32]
-            emb = self.embedder.encode(batch, show_progress=False)
-            all_embeddings.append(emb)
-        embeddings = np.vstack(all_embeddings)
+        embeddings = self.embedder.encode_bulk(texts)
 
         index = FAISSIndex(dim=self.embedder.dim)
         index.add(chunks, embeddings)
