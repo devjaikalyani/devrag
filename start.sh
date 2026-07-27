@@ -88,16 +88,17 @@ echo "Starting API on http://localhost:8001 ..."
     --log-level warning &
 API_PID=$!
 
-# Wait up to 30s for the API to be healthy
-echo "    Waiting for API..."
-for i in $(seq 1 30); do
+# Wait up to 120s for the API to be healthy: a cold start on Intel Mac
+# spends 30-60s just importing torch/langgraph before uvicorn can bind.
+echo "    Waiting for API (cold start can take a minute)..."
+for i in $(seq 1 120); do
     if curl -s http://localhost:8001/health > /dev/null 2>&1; then
         echo "    API ready"
         break
     fi
-    if [ "$i" -eq 30 ]; then
+    if [ "$i" -eq 120 ]; then
         echo ""
-        echo "    ERROR: API did not start in 30s. Check the error above."
+        echo "    ERROR: API did not start in 120s. Check the error above."
         echo "    Quick debug: $UVICORN devrag.api.main:app --port 8001"
         cleanup
     fi
