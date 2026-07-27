@@ -97,6 +97,23 @@ def create_branch(repo_path: str, branch: str) -> None:
         repo.git.checkout("-b", branch)
 
 
+# Build/test artifacts that running the suite creates; never belong in a PR.
+_ARTIFACT_DIRS = {
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "htmlcov", "node_modules", ".tox", ".eggs",
+}
+_ARTIFACT_SUFFIXES = (".pyc", ".pyo", ".pyd", ".orig", ".rej")
+_ARTIFACT_NAMES = {".coverage", ".DS_Store"}
+
+
+def _is_artifact(path: str) -> bool:
+    parts = path.split("/")
+    if _ARTIFACT_DIRS.intersection(parts):
+        return True
+    name = parts[-1]
+    return name in _ARTIFACT_NAMES or name.endswith(_ARTIFACT_SUFFIXES) or name.startswith(".coverage.")
+
+
 def commit_and_push(repo_path: str, branch: str, message: str, remote_name: str = "origin") -> None:
     """Commit all changes and push to remote."""
     repo = git.Repo(repo_path)
@@ -108,9 +125,20 @@ def commit_and_push(repo_path: str, branch: str, message: str, remote_name: str 
         if not repo.config_reader().has_option("user", "email"):
             cw.set_value("user", "email", "devrag@example.com")
     
-    # Add all changes
+    # Stage everything except artifacts the agent's own test run produced.
+    # A plain `add -A` puts __pycache__, .pytest_cache, and coverage files in
+    # the PR, which reviewers see as noise in an otherwise clean diff.
     repo.git.add("-A")
-    
+    staged = [line[3:].strip().strip('"') for line in repo.git.status("--porcelain").splitlines()]
+    artifacts = [p for p in staged if _is_artifact(p)]
+    for path in artifacts:
+        try:
+            repo.git.rm("--cached", "-r", "--ignore-unmatch", "-q", "--", path)
+        except Exception:
+            pass
+    if artifacts:
+        print(f"  Excluded {len(artifacts)} build artifact(s) from the commit")
+
     # Check if there are changes to commit
     if repo.is_dirty() or repo.untracked_files:
         try:
